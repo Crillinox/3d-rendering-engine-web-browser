@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPU-Accelerated 3D Engine</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #87CEEB;
+        }
+
+        #canvas {
+            display: block;
+            cursor: crosshair;
+            /* GPU acceleration via CSS transforms */
+            transform: translateZ(0);
+            backface-visibility: hidden;
+            perspective: 1000px;
+            will-change: transform;
+            image-rendering: optimizeSpeed;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: optimize-contrast;
+            image-rendering: pixelated;
+        }
+
+        .hud {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            color: #000;
+            font-size: 14px;
+            line-height: 1.6;
+            pointer-events: none;
+            text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.8);
+            z-index: 10;
+            /* GPU acceleration for HUD */
+            transform: translateZ(0);
+            will-change: contents;
+        }
+
+        .lock-prompt {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%) translateZ(0);
+            color: #ff0000;
+            font-size: 16px;
+            font-weight: bold;
+            pointer-events: none;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+            z-index: 10;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .crosshair {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            width: 20px;
+            height: 20px;
+            transform: translate(-50%, -50%) translateZ(0);
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .crosshair::before,
+        .crosshair::after {
+            content: '';
+            position: absolute;
+            background: white;
+            box-shadow: 0 0 2px black;
+        }
+
+        .crosshair::before {
+            top: 50%;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            transform: translateY(-50%);
+        }
+
+        .crosshair::after {
+            left: 50%;
+            top: 0;
+            width: 2px;
+            height: 100%;
+            transform: translateX(-50%);
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    
+    <div class="hud" id="hud">
+        <div>FPS: <span id="fps">0</span></div>
+        <div>Cubes: <span id="cubes">0</span> | Visible: <span id="visible">0</span> | Faces: <span id="faces">0</span></div>
+        <div>WASD: Move | Space/Shift: Y | Mouse: Look (click to toggle)</div>
+        <div>Position: (<span id="pos-x">0</span>, <span id="pos-y">0</span>, <span id="pos-z">0</span>)</div>
+    </div>
+    
+    <div class="crosshair hidden" id="crosshair"></div>
+    <div class="lock-prompt" id="lockPrompt">CLICK TO LOCK MOUSE</div>
+
+    <script>
+        'use strict';
+
+        // ===== PERFORMANCE CONFIG =====
+        const CONFIG = {
+            RENDER_DISTANCE: 6,
+            CHUNK_SIZE: 6,
+            MIN_FACE_AREA: 5,
+            MAX_FACES_PER_FRAME: 40,
+            GRID_DRAW_INTERVAL: 5,
+            GRID_RADIUS: 10,
+            CANVAS_WIDTH: 400,
+            CANVAS_HEIGHT: 400
+        };
+
+        // ===== SETUP CANVAS =====
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d', {
+            alpha: false,
+            desynchronized: true, // Reduces latency
+            willReadFrequently: false
+        });
+
+        // Set canvas size
+        canvas.width = CONFIG.CANVAS_WIDTH;
+        canvas.height = CONFIG.CANVAS_HEIGHT;
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+
+        const centerX = CONFIG.CANVAS_WIDTH / 2;
+        const centerY = CONFIG.CANVAS_HEIGHT / 2;
+
+        // ===== CAMERA =====
+        const camera = {
+            x: 0,
+            y: 0,
+            z: -5,
+            rotX: 0,
+            rotY: 0,
+            speed: 0.2,
+            sinY: 0,
+            cosY: 1,
+            sinX: 0,
+            cosX: 1
+        };
+
+        // ===== MOUSE CONTROL =====
+        let mouseLocked = false;
+        let lastMouseX = centerX;
+        let lastMouseY = centerY;
+        const mouseSensitivity = 0.016;
+
+        const lockPrompt = document.getElementById('lockPrompt');
+        const crosshair = document.getElementById('crosshair');
+
+        canvas.addEventListener('click', () => {
+            mouseLocked = !mouseLocked;
+            lastMouseX = centerX;
+            lastMouseY = centerY;
+            
+            if (mouseLocked) {
+                lockPrompt.classList.add('hidden');
+                crosshair.classList.remove('hidden');
+                canvas.requestPointerLock?.();
+            } else {
+                lockPrompt.classList.remove('hidden');
+                crosshair.classList.add('hidden');
+                document.exitPointerLock?.();
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (mouseLocked) {
+                const deltaX = e.movementX ?? (e.pageX - lastMouseX);
+                const deltaY = e.movementY ?? (e.pageY - lastMouseY);
+                
+                if (deltaX !== 0 || deltaY !== 0) {
+                    camera.rotY -= deltaX * mouseSensitivity;
+                    camera.rotX += deltaY * mouseSensitivity;
+                    camera.rotX = Math.max(-1.5, Math.min(1.5, camera.rotX));
+                }
+                
+                lastMouseX = e.pageX;
+                lastMouseY = e.pageY;
+            }
+        });
+
+        // ===== KEYBOARD INPUT =====
+        const keys = new Set();
+
+        window.addEventListener('keydown', (e) => {
+            keys.add(e.key.toLowerCase());
+            if (e.key === ' ') e.preventDefault();
+        });
+
+        window.addEventListener('keyup', (e) => {
+            keys.delete(e.key.toLowerCase());
+        });
+
+        // ===== OPTIMIZED MATH =====
+        function updateCameraCache() {
+            camera.sinY = Math.sin(camera.rotY);
+            camera.cosY = Math.cos(camera.rotY);
+            camera.sinX = Math.sin(camera.rotX);
+            camera.cosX = Math.cos(camera.rotX);
+        }
+
+        function transformPoint(x, y, z) {
+            const dx = x - camera.x;
+            const dy = y - camera.y;
+            const dz = z - camera.z;
+            
+            const tx = dx * camera.cosY + dz * camera.sinY;
+            let tz = -dx * camera.sinY + dz * camera.cosY;
+            const ty = dy * camera.cosX - tz * camera.sinX;
+            tz = dy * camera.sinX + tz * camera.cosX;
+            
+            return [tx, ty, tz];
+        }
+
+        function projectPoint(tx, ty, tz) {
+            if (tz <= 0.1) return null;
+            const scale = 200 / tz;
+            return [centerX + tx * scale, centerY + ty * scale, tz];
+        }
+
+        function sphereInFrustum(x, y, z, radius) {
+            const [tx, ty, tz] = transformPoint(x, y, z);
+            
+            if (tz < 0.1 - radius || tz > CONFIG.RENDER_DISTANCE + radius) return false;
+            
+            const maxX = tz * 0.8 + radius;
+            const maxY = tz * 0.8 + radius;
+            
+            return Math.abs(tx) <= maxX && Math.abs(ty) <= maxY;
+        }
+
+        // ===== CHUNK SYSTEM =====
+        const chunks = new Map();
+
+        function getChunkKey(x, z) {
+            return `${Math.floor(x / CONFIG.CHUNK_SIZE)},${Math.floor(z / CONFIG.CHUNK_SIZE)}`;
+        }
+
+        function addToChunk(obj) {
+            const key = getChunkKey(obj.x, obj.z);
+            if (!chunks.has(key)) chunks.set(key, []);
+            chunks.get(key).push(obj);
+        }
+
+        function getVisibleChunks() {
+            const visible = [];
+            const camChunkX = Math.floor(camera.x / CONFIG.CHUNK_SIZE);
+            const camChunkZ = Math.floor(camera.z / CONFIG.CHUNK_SIZE);
+            const chunkRadius = Math.ceil(CONFIG.RENDER_DISTANCE / CONFIG.CHUNK_SIZE);
+            
+            for (let dx = -chunkRadius; dx <= chunkRadius; dx++) {
+                for (let dz = -chunkRadius; dz <= chunkRadius; dz++) {
+                    const key = `${camChunkX + dx},${camChunkZ + dz}`;
+                    const chunk = chunks.get(key);
+                    if (chunk) visible.push(chunk);
+                }
+            }
+            return visible;
+        }
+
+        // ===== GEOMETRY =====
+        const CUBE_VERTS = [
+            [-0.5, -0.5, 0.5], [0.5, -0.5, 0.5], [0.5, 0.5, 0.5], [-0.5, 0.5, 0.5],
+            [-0.5, -0.5, -0.5], [0.5, -0.5, -0.5], [0.5, 0.5, -0.5], [-0.5, 0.5, -0.5]
+        ];
+
+        const CUBE_FACES = [
+            { i: [0, 1, 2, 3], n: [0, 0, 1] },
+            { i: [5, 4, 7, 6], n: [0, 0, -1] },
+            { i: [4, 0, 3, 7], n: [-1, 0, 0] },
+            { i: [1, 5, 6, 2], n: [1, 0, 0] },
+            { i: [3, 2, 6, 7], n: [0, 1, 0] },
+            { i: [4, 5, 1, 0], n: [0, -1, 0] }
+        ];
+
+        const COLORS = ['#ff0000', '#0000ff', '#00ff00', '#ffff00', '#ff00ff', '#ff8800'];
+
+        // ===== WORLD INITIALIZATION =====
+        const cubes = [];
+
+        function initWorld() {
+            for (let x = -8; x <= 8; x += 2) {
+                for (let z = -8; z <= 8; z += 2) {
+                    if (Math.random() > 0.7) {
+                        const cube = {
+                            x,
+                            y: Math.random() * 2 - 1,
+                            z,
+                            size: 1,
+                            color: COLORS[Math.floor(Math.random() * COLORS.length)],
+                            radius: 0.87,
+                            worldVerts: null
+                        };
+                        precomputeCubeVerts(cube);
+                        cubes.push(cube);
+                        addToChunk(cube);
+                    }
+                }
+            }
+        }
+
+        function precomputeCubeVerts(cube) {
+            const s = cube.size;
+            cube.worldVerts = CUBE_VERTS.map(([vx, vy, vz]) => [
+                cube.x + vx * s,
+                cube.y + vy * s,
+                cube.z + vz * s
+            ]);
+        }
+
+        // ===== GRID =====
+        const gridLines = [];
+
+        function initGrid() {
+            for (let i = -10; i <= 10; i++) {
+                gridLines.push({
+                    x1: i * 2, y: -1, z1: -20,
+                    x2: i * 2, z2: 20
+                });
+                gridLines.push({
+                    x1: -20, y: -1, z1: i * 2,
+                    x2: 20, z2: i * 2
+                });
+            }
+        }
+
+        function drawGrid() {
+            ctx.strokeStyle = 'rgba(100, 100, 100, 0.24)';
+            ctx.lineWidth = 1;
+            
+            for (let i = 0; i < gridLines.length; i += CONFIG.GRID_DRAW_INTERVAL) {
+                const g = gridLines[i];
+                
+                const distX = Math.abs(g.x1 - camera.x);
+                const distZ = Math.abs(g.z1 - camera.z);
+                if (distX > CONFIG.GRID_RADIUS && distZ > CONFIG.GRID_RADIUS) continue;
+                
+                const t1 = transformPoint(g.x1, g.y, g.z1);
+                const t2 = transformPoint(g.x2, g.y, g.z2);
+                
+                if (t1[2] > 0.1 && t2[2] > 0.1 && 
+                    t1[2] < CONFIG.RENDER_DISTANCE && t2[2] < CONFIG.RENDER_DISTANCE) {
+                    const p1 = projectPoint(t1[0], t1[1], t1[2]);
+                    const p2 = projectPoint(t2[0], t2[1], t2[2]);
+                    
+                    if (p1 && p2) {
+                        ctx.beginPath();
+                        ctx.moveTo(p1[0], p1[1]);
+                        ctx.lineTo(p2[0], p2[1]);
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+
+        // ===== RENDERING =====
+        const renderQueue = [];
+        const stats = { visible: 0, drawn: 0, culled: 0 };
+
+        function queueCubeFaces(cube) {
+            const { x: cx, y: cy, z: cz } = cube;
+            
+            // Distance culling
+            const dx = cx - camera.x;
+            const dy = cy - camera.y;
+            const dz = cz - camera.z;
+            const distSq = dx * dx + dy * dy + dz * dz;
+            
+            if (distSq > CONFIG.RENDER_DISTANCE * CONFIG.RENDER_DISTANCE) {
+                stats.culled++;
+                return;
+            }
+            
+            // Frustum culling
+            if (!sphereInFrustum(cx, cy, cz, cube.radius)) {
+                stats.culled++;
+                return;
+            }
+            
+            stats.visible++;
+            
+            // Transform all 8 vertices
+            const tv = cube.worldVerts.map(([wx, wy, wz]) => 
+                transformPoint(wx, wy, wz)
+            );
+            
+            // Process each face
+            for (const face of CUBE_FACES) {
+                // Quick Z check
+                const avgZ = face.i.reduce((sum, idx) => sum + tv[idx][2], 0) / 4;
+                if (avgZ <= 0.1) continue;
+                
+                // Backface culling
+                const v0 = tv[face.i[0]];
+                if (v0[0] * face.n[0] + v0[1] * face.n[1] + v0[2] * face.n[2] <= 0) continue;
+                
+                // Project vertices
+                const proj = face.i.map(idx => 
+                    projectPoint(tv[idx][0], tv[idx][1], tv[idx][2])
+                );
+                
+                if (proj.some(p => !p)) continue;
+                
+                // Screen area culling
+                const area = Math.abs(
+                    (proj[1][0] - proj[0][0]) * (proj[2][1] - proj[0][1]) -
+                    (proj[2][0] - proj[0][0]) * (proj[1][1] - proj[0][1])
+                );
+                
+                if (area < CONFIG.MIN_FACE_AREA) continue;
+                if (renderQueue.length >= CONFIG.MAX_FACES_PER_FRAME) return;
+                
+                renderQueue.push({
+                    p: proj,
+                    c: cube.color,
+                    z: avgZ
+                });
+            }
+        }
+
+        function renderScene() {
+            renderQueue.length = 0;
+            stats.visible = 0;
+            stats.drawn = 0;
+            stats.culled = 0;
+            
+            const visibleChunks = getVisibleChunks();
+            
+            for (const chunk of visibleChunks) {
+                for (const cube of chunk) {
+                    queueCubeFaces(cube);
+                    if (renderQueue.length >= CONFIG.MAX_FACES_PER_FRAME) break;
+                }
+                if (renderQueue.length >= CONFIG.MAX_FACES_PER_FRAME) break;
+            }
+            
+            // Sort by depth
+            renderQueue.sort((a, b) => b.z - a.z);
+            
+            // Draw faces
+            const drawCount = Math.min(40, renderQueue.length);
+            
+            for (let i = 0; i < drawCount; i++) {
+                const f = renderQueue[i];
+                ctx.fillStyle = f.c;
+                ctx.beginPath();
+                ctx.moveTo(f.p[0][0], f.p[0][1]);
+                ctx.lineTo(f.p[1][0], f.p[1][1]);
+                ctx.lineTo(f.p[2][0], f.p[2][1]);
+                ctx.lineTo(f.p[3][0], f.p[3][1]);
+                ctx.closePath();
+                ctx.fill();
+                stats.drawn++;
+            }
+        }
+
+        // ===== MOVEMENT =====
+        function handleMovement() {
+            let moveX = 0;
+            let moveZ = 0;
+            
+            if (keys.has('w')) moveZ += 1;
+            if (keys.has('s')) moveZ -= 1;
+            if (keys.has('a')) moveX -= 1;
+            if (keys.has('d')) moveX += 1;
+            
+            camera.x += (moveX * camera.cosY - moveZ * camera.sinY) * camera.speed;
+            camera.z += (moveX * camera.sinY + moveZ * camera.cosY) * camera.speed;
+            
+            if (keys.has(' ')) camera.y -= camera.speed;
+            if (keys.has('shift')) camera.y += camera.speed;
+        }
+
+        // ===== FPS COUNTER =====
+        let frameCount = 0;
+        let lastTime = performance.now();
+        let fps = 0;
+
+        // ===== MAIN LOOP =====
+        function draw(currentTime) {
+            // Clear canvas
+            ctx.fillStyle = '#87CEEB';
+            ctx.fillRect(0, 0, CONFIG.CANVAS_WIDTH, CONFIG.CANVAS_HEIGHT);
+            
+            updateCameraCache();
+            handleMovement();
+            
+            drawGrid();
+            renderScene();
+            
+            // Update FPS
+            frameCount++;
+            if (currentTime - lastTime >= 1000) {
+                fps = frameCount;
+                frameCount = 0;
+                lastTime = currentTime;
+                
+                // Update HUD
+                document.getElementById('fps').textContent = fps;
+                document.getElementById('cubes').textContent = cubes.length;
+                document.getElementById('visible').textContent = stats.visible;
+                document.getElementById('faces').textContent = stats.drawn;
+                document.getElementById('pos-x').textContent = camera.x.toFixed(1);
+                document.getElementById('pos-y').textContent = camera.y.toFixed(1);
+                document.getElementById('pos-z').textContent = camera.z.toFixed(1);
+            }
+            
+            requestAnimationFrame(draw);
+        }
+
+        // ===== INITIALIZATION =====
+        initWorld();
+        initGrid();
+        requestAnimationFrame(draw);
+    </script>
+</body>
+</html>
