@@ -5,7 +5,7 @@
 ### OVERVIEW
 The raster renderer is a traditional software 3D renderer.
 
-Unlike ray tracing and ray marching, rasterization:
+Rasterization:
 * Projects vertices onto the screen
 * Builds polygons from projected vertices
 * Draws visible faces
