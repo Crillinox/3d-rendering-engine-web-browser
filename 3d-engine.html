@@ -1,501 +1,1168 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Engine</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VOID ENGINE</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
 
-        body {
-            width: 100vw;
-            height: 100vh;
-            overflow: hidden;
-            background: #87CEEB;
-            font-family: 'Courier New', monospace;
-        }
+:root {
+  --bg: #050508;
+  --panel: #0a0a12;
+  --border: #1a1a3a;
+  --accent: #00ffcc;
+  --accent2: #ff3366;
+  --accent3: #ffaa00;
+  --text: #c0c0e0;
+  --dim: #404060;
+  --glow: 0 0 10px #00ffcc55, 0 0 30px #00ffcc22;
+  --glow2: 0 0 10px #ff336655, 0 0 30px #ff336622;
+}
 
-        #canvas {
-            display: block;
-            cursor: crosshair;
-            transform: translateZ(0);
-            will-change: transform;
-            image-rendering: pixelated;
-        }
+body {
+  width:100vw; height:100vh; overflow:hidden;
+  background: var(--bg);
+  font-family: 'Share Tech Mono', monospace;
+  color: var(--text);
+}
 
-        .hud {
-            position: fixed;
-            top: 10px;
-            left: 10px;
-            color: #000;
-            font-size: 13px;
-            line-height: 1.8;
-            pointer-events: none;
-            text-shadow: 1px 1px 0 rgba(255,255,255,0.8);
-            z-index: 10;
-        }
+canvas {
+  display:block; position:fixed; top:0; left:0;
+  width:100%; height:100%;
+  cursor:crosshair;
+  transform:translateZ(0);
+}
 
-        .lock-prompt {
-            position: fixed;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            color: #ff0000;
-            font-size: 16px;
-            font-weight: bold;
-            pointer-events: none;
-            font-family: 'Courier New', monospace;
-            animation: pulse 1.2s ease-in-out infinite;
-            z-index: 10;
-        }
+/* ── SCANLINE OVERLAY ── */
+body::after {
+  content:'';
+  position:fixed; inset:0; z-index:1;
+  pointer-events:none;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,0,0,0.03) 2px,
+    rgba(0,0,0,0.03) 4px
+  );
+}
 
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.4; }
-        }
+/* ── LAYERS ── */
+#menu-layer, #pause-layer {
+  position:fixed; inset:0; z-index:100;
+  display:flex; align-items:center; justify-content:center;
+  background: rgba(5,5,8,0.92);
+  backdrop-filter: blur(4px);
+}
+#pause-layer { display:none; }
 
-        .crosshair {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            width: 20px;
-            height: 20px;
-            transform: translate(-50%, -50%);
-            pointer-events: none;
-            z-index: 10;
-        }
+/* ── MENU PANEL ── */
+.panel {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  padding: 48px 56px;
+  min-width: 420px;
+  position: relative;
+  box-shadow: 0 0 60px rgba(0,255,204,0.08), inset 0 0 60px rgba(0,0,0,0.5);
+}
 
-        .crosshair::before, .crosshair::after {
-            content: '';
-            position: absolute;
-            background: white;
-            box-shadow: 0 0 2px black;
-        }
+.panel::before {
+  content:'';
+  position:absolute; top:-1px; left:24px; right:24px; height:1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+}
+.panel::after {
+  content:'';
+  position:absolute; bottom:-1px; left:24px; right:24px; height:1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+}
 
-        .crosshair::before {
-            top: 50%; left: 0;
-            width: 100%; height: 2px;
-            transform: translateY(-50%);
-        }
+.panel-corner {
+  position:absolute; width:12px; height:12px;
+  border-color: var(--accent);
+  border-style: solid;
+}
+.panel-corner.tl { top:-1px; left:-1px; border-width:2px 0 0 2px; }
+.panel-corner.tr { top:-1px; right:-1px; border-width:2px 2px 0 0; }
+.panel-corner.bl { bottom:-1px; left:-1px; border-width:0 0 2px 2px; }
+.panel-corner.br { bottom:-1px; right:-1px; border-width:0 2px 2px 0; }
 
-        .crosshair::after {
-            left: 50%; top: 0;
-            width: 2px; height: 100%;
-            transform: translateX(-50%);
-        }
+.engine-title {
+  font-family: 'Orbitron', sans-serif;
+  font-weight: 900;
+  font-size: 42px;
+  letter-spacing: 8px;
+  color: var(--accent);
+  text-shadow: var(--glow);
+  text-align: center;
+  margin-bottom: 4px;
+}
 
-        .hidden { display: none; }
-    </style>
+.engine-sub {
+  text-align:center;
+  font-size:11px;
+  letter-spacing:4px;
+  color: var(--dim);
+  margin-bottom: 40px;
+  text-transform: uppercase;
+}
+
+.menu-btn {
+  display:block; width:100%; padding:14px 20px;
+  margin-bottom:12px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: 'Share Tech Mono', monospace;
+  font-size:15px;
+  letter-spacing:3px;
+  text-transform:uppercase;
+  cursor:pointer;
+  text-align:left;
+  position:relative;
+  transition: all 0.15s;
+}
+.menu-btn::before {
+  content:'> ';
+  color: var(--accent);
+  opacity:0;
+  transition: opacity 0.15s;
+}
+.menu-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(0,255,204,0.04);
+  box-shadow: var(--glow);
+  padding-left:28px;
+}
+.menu-btn:hover::before { opacity:1; position:absolute; left:10px; }
+.menu-btn.danger:hover {
+  border-color: var(--accent2);
+  color: var(--accent2);
+  background: rgba(255,51,102,0.04);
+  box-shadow: var(--glow2);
+}
+.menu-btn.danger::before { color:var(--accent2); }
+
+/* ── SETTINGS PANEL ── */
+.settings-section {
+  margin-bottom:28px;
+}
+.settings-label {
+  font-size:10px;
+  letter-spacing:3px;
+  color:var(--dim);
+  text-transform:uppercase;
+  margin-bottom:16px;
+  border-bottom:1px solid var(--border);
+  padding-bottom:6px;
+}
+
+.setting-row {
+  display:flex; align-items:center; justify-content:space-between;
+  margin-bottom:14px;
+}
+.setting-name {
+  font-size:13px;
+  color:var(--text);
+  letter-spacing:1px;
+}
+.setting-value {
+  color:var(--accent);
+  font-size:13px;
+  min-width:50px;
+  text-align:right;
+}
+
+input[type=range] {
+  -webkit-appearance:none;
+  width:140px; height:2px;
+  background: var(--border);
+  outline:none;
+  cursor:pointer;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance:none;
+  width:12px; height:12px;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+  cursor:pointer;
+}
+input[type=range]::-webkit-slider-runnable-track {
+  background: linear-gradient(90deg, var(--accent) var(--pct,0%), var(--border) var(--pct,0%));
+}
+
+.toggle-row {
+  display:flex; align-items:center; gap:12px;
+  margin-bottom:14px;
+}
+.toggle-name { font-size:13px; color:var(--text); flex:1; }
+.toggle-badge {
+  font-size:10px; letter-spacing:2px; padding:3px 10px;
+  border:1px solid var(--dim); color:var(--dim);
+  cursor:pointer; transition:all 0.15s; user-select:none;
+}
+.toggle-badge.on {
+  border-color:var(--accent); color:var(--accent);
+  background:rgba(0,255,204,0.08);
+  box-shadow:0 0 8px rgba(0,255,204,0.3);
+}
+.toggle-badge.warn {
+  border-color:var(--accent3); color:var(--accent3);
+  background:rgba(255,170,0,0.08);
+  box-shadow:0 0 8px rgba(255,170,0,0.3);
+}
+
+.mode-group {
+  display:flex; gap:8px; flex-wrap:wrap;
+}
+.mode-btn {
+  font-size:10px; letter-spacing:2px; padding:5px 14px;
+  border:1px solid var(--border); color:var(--dim);
+  background:transparent; cursor:pointer;
+  font-family:'Share Tech Mono',monospace;
+  text-transform:uppercase;
+  transition:all 0.15s;
+}
+.mode-btn.active {
+  border-color:var(--accent3); color:var(--accent3);
+  background:rgba(255,170,0,0.08);
+  box-shadow:0 0 8px rgba(255,170,0,0.25);
+}
+
+.panel-title {
+  font-family:'Orbitron',sans-serif;
+  font-weight:700;
+  font-size:18px;
+  letter-spacing:4px;
+  color:var(--accent);
+  text-shadow:var(--glow);
+  margin-bottom:28px;
+  text-align:center;
+}
+
+/* ── BACK BTN ── */
+.back-btn {
+  font-size:11px; letter-spacing:3px; padding:10px 20px;
+  border:1px solid var(--border); color:var(--dim);
+  background:transparent; cursor:pointer;
+  font-family:'Share Tech Mono',monospace;
+  text-transform:uppercase; width:100%;
+  margin-top:4px;
+  transition:all 0.15s;
+}
+.back-btn:hover { border-color:var(--dim); color:var(--text); }
+
+/* ── HUD ── */
+#hud {
+  position:fixed; top:14px; left:14px;
+  z-index:10; pointer-events:none;
+  font-size:12px; line-height:2;
+  color:rgba(0,255,204,0.7);
+  text-shadow:0 0 8px rgba(0,255,204,0.5);
+  display:none;
+}
+.hud-row { display:flex; gap:20px; }
+.hud-label { color:rgba(0,255,204,0.35); letter-spacing:1px; }
+
+#render-mode-hud {
+  position:fixed; top:14px; right:14px;
+  z-index:10; pointer-events:none;
+  font-size:11px; letter-spacing:3px;
+  color:rgba(255,170,0,0.7);
+  text-shadow:0 0 8px rgba(255,170,0,0.4);
+  display:none;
+}
+
+/* ── CROSSHAIR ── */
+#crosshair {
+  position:fixed; top:50%; left:50%;
+  width:18px; height:18px;
+  transform:translate(-50%,-50%);
+  pointer-events:none; z-index:10; display:none;
+}
+#crosshair::before,#crosshair::after {
+  content:''; position:absolute;
+  background:rgba(0,255,204,0.8);
+  box-shadow:0 0 6px rgba(0,255,204,0.6);
+}
+#crosshair::before { top:50%;left:0;width:100%;height:1px;transform:translateY(-50%); }
+#crosshair::after  { left:50%;top:0;width:1px;height:100%;transform:translateX(-50%); }
+
+/* ── LOCK PROMPT ── */
+#lock-prompt {
+  position:fixed; bottom:24px; left:50%;
+  transform:translateX(-50%);
+  font-size:12px; letter-spacing:4px;
+  color:rgba(0,255,204,0.5);
+  pointer-events:none; z-index:10;
+  animation:blink 2s ease-in-out infinite; display:none;
+  text-transform:uppercase;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+/* ── PAUSE HINT ── */
+#pause-hint {
+  position:fixed; bottom:24px; right:20px;
+  font-size:10px; letter-spacing:2px;
+  color:rgba(255,255,255,0.15);
+  pointer-events:none; z-index:10; display:none;
+}
+
+/* ── WARNING TAG ── */
+.warn-tag {
+  font-size:9px; letter-spacing:1px; padding:2px 7px;
+  border:1px solid var(--accent3); color:var(--accent3);
+  margin-left:8px; vertical-align:middle;
+}
+
+/* ── SCROLL ── */
+.scrollable { max-height:70vh; overflow-y:auto; padding-right:8px; }
+.scrollable::-webkit-scrollbar { width:2px; }
+.scrollable::-webkit-scrollbar-track { background:var(--border); }
+.scrollable::-webkit-scrollbar-thumb { background:var(--accent); }
+
+/* ── ANIM ── */
+@keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+.panel { animation: fadeIn 0.2s ease; }
+</style>
 </head>
 <body>
-    <canvas id="canvas"></canvas>
 
-    <div class="hud" id="hud">
-        <div>FPS: <span id="fps">0</span></div>
-        <div>Cubes: <span id="cubes">0</span> | Visible: <span id="visible">0</span> | Faces: <span id="faces">0</span></div>
-        <div>WASD: Move | Space/Shift: Up/Down | Click: Lock Mouse</div>
-        <div>Pos: (<span id="pos-x">0</span>, <span id="pos-y">0</span>, <span id="pos-z">0</span>)</div>
+<canvas id="canvas"></canvas>
+
+<!-- HUD -->
+<div id="hud">
+  <div class="hud-row">
+    <span><span class="hud-label">FPS </span><span id="fps">0</span></span>
+    <span><span class="hud-label">FACES </span><span id="faces">0</span></span>
+    <span><span class="hud-label">VIS </span><span id="visible">0</span></span>
+  </div>
+  <div class="hud-row">
+    <span><span class="hud-label">X </span><span id="px">0</span></span>
+    <span><span class="hud-label">Y </span><span id="py">0</span></span>
+    <span><span class="hud-label">Z </span><span id="pz">0</span></span>
+  </div>
+  <div><span class="hud-label">RDIST </span><span id="rdist-hud">20</span></div>
+</div>
+<div id="render-mode-hud">RASTERIZE</div>
+<div id="crosshair"></div>
+<div id="lock-prompt">[ CLICK TO CAPTURE MOUSE ]</div>
+<div id="pause-hint">TAB — PAUSE MENU</div>
+
+<!-- MAIN MENU -->
+<div id="menu-layer">
+  <!-- MAIN -->
+  <div id="screen-main" class="panel">
+    <div class="panel-corner tl"></div><div class="panel-corner tr"></div>
+    <div class="panel-corner bl"></div><div class="panel-corner br"></div>
+    <div class="engine-title">VOID</div>
+    <div class="engine-sub">3D Engine v2.0 // Raster / Ray</div>
+    <button class="menu-btn" onclick="startGame()">Start</button>
+    <button class="menu-btn" onclick="showScreen('screen-settings')">Settings</button>
+  </div>
+
+  <!-- SETTINGS -->
+  <div id="screen-settings" class="panel" style="display:none;min-width:480px;">
+    <div class="panel-corner tl"></div><div class="panel-corner tr"></div>
+    <div class="panel-corner bl"></div><div class="panel-corner br"></div>
+    <div class="panel-title">SETTINGS</div>
+    <div class="scrollable">
+      <div class="settings-section">
+        <div class="settings-label">Performance</div>
+        <div class="setting-row">
+          <span class="setting-name">Render Distance</span>
+          <span class="setting-value" id="rd-val">20</span>
+          <input type="range" id="rd-slider" min="5" max="50" value="20" oninput="updateSetting('RENDER_DISTANCE',this)">
+        </div>
+        <div class="setting-row">
+          <span class="setting-name">Max Faces</span>
+          <span class="setting-value" id="mf-val">400</span>
+          <input type="range" id="mf-slider" min="40" max="2000" step="40" value="400" oninput="updateSetting('MAX_FACES_PER_FRAME',this)">
+        </div>
+        <div class="setting-row">
+          <span class="setting-name">Min Face Area</span>
+          <span class="setting-value" id="fa-val">5</span>
+          <input type="range" id="fa-slider" min="1" max="200" value="5" oninput="updateSetting('MIN_FACE_AREA',this)">
+        </div>
+        <div class="setting-row">
+          <span class="setting-name">Mouse Sensitivity</span>
+          <span class="setting-value" id="ms-val">2.0</span>
+          <input type="range" id="ms-slider" min="0.5" max="10" step="0.5" value="2.0" oninput="updateSensitivity(this)">
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-label">Render Mode</div>
+        <div class="toggle-row" style="margin-bottom:16px;">
+          <div class="mode-group" id="mode-group">
+            <button class="mode-btn active" data-mode="raster" onclick="setRenderMode('raster',this)">Rasterize</button>
+            <button class="mode-btn" data-mode="raytrace" onclick="setRenderMode('raytrace',this)">Raytrace <span class="warn-tag">SLOW</span></button>
+            <button class="mode-btn" data-mode="raymarch" onclick="setRenderMode('raymarch',this)">Raymarch <span class="warn-tag">SLOW</span></button>
+          </div>
+        </div>
+        <div class="setting-row" id="ray-steps-row" style="display:none;">
+          <span class="setting-name">Ray Steps</span>
+          <span class="setting-value" id="rs-val">64</span>
+          <input type="range" id="rs-slider" min="16" max="256" step="16" value="64" oninput="updateRaySteps(this)">
+        </div>
+        <div class="setting-row" id="ray-res-row" style="display:none;">
+          <span class="setting-name">Ray Resolution</span>
+          <span class="setting-value" id="rr-val">4</span>
+          <input type="range" id="rr-slider" min="1" max="8" step="1" value="4" oninput="updateRayRes(this)">
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-label">Visual</div>
+        <div class="toggle-row">
+          <span class="toggle-name">Face Shading</span>
+          <span class="toggle-badge on" id="tog-shade" onclick="toggleSetting('shade',this)">ON</span>
+        </div>
+        <div class="toggle-row">
+          <span class="toggle-name">Grid</span>
+          <span class="toggle-badge on" id="tog-grid" onclick="toggleSetting('grid',this)">ON</span>
+        </div>
+        <div class="toggle-row">
+          <span class="toggle-name">Fog</span>
+          <span class="toggle-badge" id="tog-fog" onclick="toggleSetting('fog',this)">OFF</span>
+        </div>
+      </div>
     </div>
-
-    <div class="crosshair hidden" id="crosshair"></div>
-    <div class="lock-prompt" id="lockPrompt">CLICK TO LOCK MOUSE</div>
-
-    <script>
-        'use strict';
-
-        // ===== PERFORMANCE CONFIG =====
-        const CONFIG = {
-            RENDER_DISTANCE: 20,
-            CHUNK_SIZE: 6,
-            MIN_FACE_AREA: 5,
-            MAX_FACES_PER_FRAME: 400,
-            GRID_DRAW_INTERVAL: 5,
-            GRID_RADIUS: 10
-        };
-
-        // ===== CANVAS SETUP =====
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d', {
-            alpha: false,
-            desynchronized: true,
-            willReadFrequently: false
-        });
-
-        function resizeCanvas() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-        }
-        resizeCanvas();
-        window.addEventListener('resize', resizeCanvas);
-
-        function centerX() { return canvas.width / 2; }
-        function centerY() { return canvas.height / 2; }
-
-        // ===== CAMERA =====
-        const camera = {
-            x: 0, y: 0, z: -5,
-            rotX: 0, rotY: 0,
-            speed: 0.2,
-            sinY: 0, cosY: 1,
-            sinX: 0, cosX: 1
-        };
-
-        // ===== MOUSE CONTROL =====
-        let mouseLocked = false;
-        const mouseSensitivity = 0.002;
-
-        const lockPrompt = document.getElementById('lockPrompt');
-        const crosshair = document.getElementById('crosshair');
-
-        canvas.addEventListener('click', () => {
-            if (!mouseLocked) {
-                canvas.requestPointerLock();
-            } else {
-                document.exitPointerLock();
-            }
-        });
-
-        document.addEventListener('pointerlockchange', () => {
-            mouseLocked = document.pointerLockElement === canvas;
-            if (mouseLocked) {
-                lockPrompt.classList.add('hidden');
-                crosshair.classList.remove('hidden');
-            } else {
-                lockPrompt.classList.remove('hidden');
-                crosshair.classList.add('hidden');
-            }
-        });
-
-        canvas.addEventListener('mousemove', (e) => {
-            if (!mouseLocked) return;
-            camera.rotY -= e.movementX * mouseSensitivity;
-            camera.rotX += e.movementY * mouseSensitivity;
-            camera.rotX = Math.max(-1.5, Math.min(1.5, camera.rotX));
-        });
-
-        // ===== KEYBOARD =====
-        const keys = new Set();
-        window.addEventListener('keydown', (e) => {
-            keys.add(e.key.toLowerCase());
-            if (e.key === ' ') e.preventDefault();
-        });
-        window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
-
-        // ===== MATH =====
-        function updateCameraCache() {
-            camera.sinY = Math.sin(camera.rotY);
-            camera.cosY = Math.cos(camera.rotY);
-            camera.sinX = Math.sin(camera.rotX);
-            camera.cosX = Math.cos(camera.rotX);
-        }
-
-        function transformPoint(x, y, z) {
-            const dx = x - camera.x;
-            const dy = -(y - camera.y); // flip Y so up is up
-            const dz = z - camera.z;
-
-            const tx = dx * camera.cosY + dz * camera.sinY;
-            let tz = -dx * camera.sinY + dz * camera.cosY;
-            const ty = dy * camera.cosX - tz * camera.sinX;
-            tz = dy * camera.sinX + tz * camera.cosX;
-
-            return [tx, ty, tz];
-        }
-
-        function projectPoint(tx, ty, tz) {
-            if (tz <= 0.1) return null;
-            const scale = 400 / tz;
-            return [centerX() + tx * scale, centerY() + ty * scale, tz];
-        }
-
-        function sphereInFrustum(x, y, z, radius) {
-            const [tx, ty, tz] = transformPoint(x, y, z);
-            if (tz < 0.1 - radius || tz > CONFIG.RENDER_DISTANCE + radius) return false;
-            const maxX = tz * 0.9 + radius;
-            const maxY = tz * 0.9 + radius;
-            return Math.abs(tx) <= maxX && Math.abs(ty) <= maxY;
-        }
-
-        // ===== CHUNK SYSTEM =====
-        const chunks = new Map();
-
-        function getChunkKey(x, z) {
-            return `${Math.floor(x / CONFIG.CHUNK_SIZE)},${Math.floor(z / CONFIG.CHUNK_SIZE)}`;
-        }
-
-        function addToChunk(obj) {
-            const key = getChunkKey(obj.x, obj.z);
-            if (!chunks.has(key)) chunks.set(key, []);
-            chunks.get(key).push(obj);
-        }
-
-        function getVisibleChunks() {
-            const visible = [];
-            const camChunkX = Math.floor(camera.x / CONFIG.CHUNK_SIZE);
-            const camChunkZ = Math.floor(camera.z / CONFIG.CHUNK_SIZE);
-            const chunkRadius = Math.ceil(CONFIG.RENDER_DISTANCE / CONFIG.CHUNK_SIZE);
-
-            for (let dx = -chunkRadius; dx <= chunkRadius; dx++) {
-                for (let dz = -chunkRadius; dz <= chunkRadius; dz++) {
-                    const key = `${camChunkX + dx},${camChunkZ + dz}`;
-                    const chunk = chunks.get(key);
-                    if (chunk) visible.push(chunk);
-                }
-            }
-            return visible;
-        }
-
-        // ===== GEOMETRY =====
-        const CUBE_VERTS = [
-            [-0.5, -0.5,  0.5], [ 0.5, -0.5,  0.5], [ 0.5,  0.5,  0.5], [-0.5,  0.5,  0.5],
-            [-0.5, -0.5, -0.5], [ 0.5, -0.5, -0.5], [ 0.5,  0.5, -0.5], [-0.5,  0.5, -0.5]
-        ];
-
-        const CUBE_FACES = [
-            { i: [0,1,2,3], n: [0,0,1],  shade: 1.0  },
-            { i: [5,4,7,6], n: [0,0,-1], shade: 0.85 },
-            { i: [4,0,3,7], n: [-1,0,0], shade: 0.7  },
-            { i: [1,5,6,2], n: [1,0,0],  shade: 0.7  },
-            { i: [3,2,6,7], n: [0,1,0],  shade: 0.55 },
-            { i: [4,5,1,0], n: [0,-1,0], shade: 0.4  }
-        ];
-
-        // ===== SHADING HELPER =====
-        // Pre-shade a color by a factor (returns CSS rgb string)
-        function shadeColor(hex, factor) {
-            // Parse named colors via a temp canvas trick
-            if (!shadeColor._cache) shadeColor._cache = {};
-            const key = hex + '|' + factor;
-            if (shadeColor._cache[key]) return shadeColor._cache[key];
-
-            const tmp = document.createElement('canvas');
-            tmp.width = tmp.height = 1;
-            const c = tmp.getContext('2d');
-            c.fillStyle = hex;
-            c.fillRect(0, 0, 1, 1);
-            const [r, g, b] = c.getImageData(0, 0, 1, 1).data;
-            const result = `rgb(${Math.round(r*factor)},${Math.round(g*factor)},${Math.round(b*factor)})`;
-            shadeColor._cache[key] = result;
-            return result;
-        }
-
-        // ===== WORLD =====
-        const cubes = [];
-        const COLORS = ['red','blue','green','yellow','purple','orange'];
-
-        function initWorld() {
-            for (let x = -8; x <= 8; x += 2) {
-                for (let z = -8; z <= 8; z += 2) {
-                    if (Math.random() > 0.7) {
-                        const cube = {
-                            x, y: Math.random() * 2 - 1, z,
-                            size: 1,
-                            color: COLORS[Math.floor(Math.random() * COLORS.length)],
-                            radius: 0.87,
-                            worldVerts: null,
-                            shadedColors: null
-                        };
-                        precomputeCubeVerts(cube);
-                        cubes.push(cube);
-                        addToChunk(cube);
-                    }
-                }
-            }
-        }
-
-        function precomputeCubeVerts(cube) {
-            const s = cube.size;
-            cube.worldVerts = CUBE_VERTS.map(([vx, vy, vz]) => [
-                cube.x + vx * s,
-                cube.y + vy * s,
-                cube.z + vz * s
-            ]);
-            // Precompute shaded face colors
-            cube.shadedColors = CUBE_FACES.map(face => shadeColor(cube.color, face.shade));
-        }
-
-        // ===== GRID =====
-        const gridLines = [];
-
-        function initGrid() {
-            for (let i = -10; i <= 10; i++) {
-                gridLines.push({ x1: i*2, y: -1, z1: -20, x2: i*2, z2: 20 });
-                gridLines.push({ x1: -20, y: -1, z1: i*2, x2: 20,  z2: i*2 });
-            }
-        }
-
-        function drawGrid() {
-            ctx.strokeStyle = 'rgba(100,100,100,0.25)';
-            ctx.lineWidth = 1;
-
-            for (let i = 0; i < gridLines.length; i += CONFIG.GRID_DRAW_INTERVAL) {
-                const g = gridLines[i];
-
-                if (Math.abs(g.x1 - camera.x) > CONFIG.GRID_RADIUS &&
-                    Math.abs(g.z1 - camera.z) > CONFIG.GRID_RADIUS) continue;
-
-                const t1 = transformPoint(g.x1, g.y, g.z1);
-                const t2 = transformPoint(g.x2, g.y, g.z2);
-
-                if (t1[2] > 0.1 && t2[2] > 0.1 &&
-                    t1[2] < CONFIG.RENDER_DISTANCE && t2[2] < CONFIG.RENDER_DISTANCE) {
-                    const p1 = projectPoint(t1[0], t1[1], t1[2]);
-                    const p2 = projectPoint(t2[0], t2[1], t2[2]);
-                    if (p1 && p2) {
-                        ctx.beginPath();
-                        ctx.moveTo(p1[0], p1[1]);
-                        ctx.lineTo(p2[0], p2[1]);
-                        ctx.stroke();
-                    }
-                }
-            }
-        }
-
-        // ===== RENDERING =====
-        const renderQueue = [];
-        const stats = { visible: 0, drawn: 0, culled: 0 };
-
-        function queueCubeFaces(cube) {
-            const { x: cx, y: cy, z: cz } = cube;
-
-            // Distance culling
-            const dx = cx - camera.x;
-            const dy = cy - camera.y;
-            const dz = cz - camera.z;
-            if (dx*dx + dy*dy + dz*dz > CONFIG.RENDER_DISTANCE * CONFIG.RENDER_DISTANCE) {
-                stats.culled++; return;
-            }
-
-            // Frustum culling
-            if (!sphereInFrustum(cx, cy, cz, cube.radius)) {
-                stats.culled++; return;
-            }
-
-            stats.visible++;
-
-            // Transform all 8 vertices
-            const tv = cube.worldVerts.map(([wx, wy, wz]) => transformPoint(wx, wy, wz));
-
-            for (let f = 0; f < 6; f++) {
-                const face = CUBE_FACES[f];
-
-                // Backface culling: dot product of face normal with camera->face vector (world space)
-                // If the normal points away from the camera, skip this face
-                const toCamX = camera.x - cx;
-                const toCamY = camera.y - cy;
-                const toCamZ = camera.z - cz;
-                const dot = face.n[0] * toCamX + face.n[1] * toCamY + face.n[2] * toCamZ;
-                if (dot <= 0) continue;
-
-                // Average Z for depth sorting
-                const avgZ = (tv[face.i[0]][2] + tv[face.i[1]][2] + tv[face.i[2]][2] + tv[face.i[3]][2]) / 4;
-                if (avgZ <= 0.1) continue;
-
-                // Project
-                const proj = [];
-                let allValid = true;
-                for (let i = 0; i < 4; i++) {
-                    const p = projectPoint(tv[face.i[i]][0], tv[face.i[i]][1], tv[face.i[i]][2]);
-                    if (!p) { allValid = false; break; }
-                    proj.push(p);
-                }
-                if (!allValid) continue;
-
-                // Screen area culling
-                const area = Math.abs(
-                    (proj[1][0]-proj[0][0]) * (proj[2][1]-proj[0][1]) -
-                    (proj[2][0]-proj[0][0]) * (proj[1][1]-proj[0][1])
-                );
-                if (area < CONFIG.MIN_FACE_AREA) continue;
-                if (renderQueue.length >= CONFIG.MAX_FACES_PER_FRAME) return;
-
-                renderQueue.push({ p: proj, c: cube.shadedColors[f], z: avgZ });
-            }
-        }
-
-        function renderScene() {
-            renderQueue.length = 0;
-            stats.visible = 0;
-            stats.drawn = 0;
-            stats.culled = 0;
-
-            for (const chunk of getVisibleChunks()) {
-                for (const cube of chunk) {
-                    queueCubeFaces(cube);
-                    if (renderQueue.length >= CONFIG.MAX_FACES_PER_FRAME) break;
-                }
-                if (renderQueue.length >= CONFIG.MAX_FACES_PER_FRAME) break;
-            }
-
-            renderQueue.sort((a, b) => b.z - a.z);
-
-            for (let i = 0; i < renderQueue.length; i++) {
-                const f = renderQueue[i];
-                ctx.fillStyle = f.c;
-                ctx.beginPath();
-                ctx.moveTo(f.p[0][0], f.p[0][1]);
-                ctx.lineTo(f.p[1][0], f.p[1][1]);
-                ctx.lineTo(f.p[2][0], f.p[2][1]);
-                ctx.lineTo(f.p[3][0], f.p[3][1]);
-                ctx.closePath();
-                ctx.fill();
-                stats.drawn++;
-            }
-        }
-
-        // ===== MOVEMENT =====
-        function handleMovement() {
-            let moveX = 0, moveZ = 0;
-
-            if (keys.has('w')) moveZ += 1;
-            if (keys.has('s')) moveZ -= 1;
-            if (keys.has('a')) moveX -= 1;
-            if (keys.has('d')) moveX += 1;
-
-            camera.x += (moveX * camera.cosY - moveZ * camera.sinY) * camera.speed;
-            camera.z += (moveX * camera.sinY + moveZ * camera.cosY) * camera.speed;
-
-            if (keys.has(' '))       camera.y += camera.speed; // Space = up
-            if (keys.has('shift'))   camera.y -= camera.speed; // Shift = down
-        }
-
-        // ===== FPS =====
-        let frameCount = 0;
-        let lastTime = performance.now();
-        let fps = 0;
-
-        // ===== MAIN LOOP =====
-        function draw(now) {
-            ctx.fillStyle = '#87CEEB';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            updateCameraCache();
-            handleMovement();
-            drawGrid();
-            renderScene();
-
-            frameCount++;
-            if (now - lastTime >= 1000) {
-                fps = frameCount;
-                frameCount = 0;
-                lastTime = now;
-
-                document.getElementById('fps').textContent = fps;
-                document.getElementById('cubes').textContent = cubes.length;
-                document.getElementById('visible').textContent = stats.visible;
-                document.getElementById('faces').textContent = stats.drawn;
-                document.getElementById('pos-x').textContent = camera.x.toFixed(1);
-                document.getElementById('pos-y').textContent = camera.y.toFixed(1);
-                document.getElementById('pos-z').textContent = camera.z.toFixed(1);
-            }
-
-            requestAnimationFrame(draw);
-        }
-
-        // ===== INIT =====
-        initWorld();
-        initGrid();
-        requestAnimationFrame(draw);
-    </script>
+    <button class="back-btn" onclick="showScreen('screen-main')">← Back</button>
+  </div>
+</div>
+
+<!-- PAUSE MENU -->
+<div id="pause-layer">
+  <div class="panel" style="min-width:440px;">
+    <div class="panel-corner tl"></div><div class="panel-corner tr"></div>
+    <div class="panel-corner bl"></div><div class="panel-corner br"></div>
+    <div class="panel-title">PAUSED</div>
+    <div class="scrollable">
+      <div class="settings-section">
+        <div class="settings-label">Performance</div>
+        <div class="setting-row">
+          <span class="setting-name">Render Distance</span>
+          <span class="setting-value" id="p-rd-val">20</span>
+          <input type="range" id="p-rd-slider" min="5" max="50" value="20" oninput="updateSetting('RENDER_DISTANCE',this,'p-rd-val')">
+        </div>
+        <div class="setting-row">
+          <span class="setting-name">Max Faces</span>
+          <span class="setting-value" id="p-mf-val">400</span>
+          <input type="range" id="p-mf-slider" min="40" max="2000" step="40" value="400" oninput="updateSetting('MAX_FACES_PER_FRAME',this,'p-mf-val')">
+        </div>
+        <div class="setting-row">
+          <span class="setting-name">Min Face Area</span>
+          <span class="setting-value" id="p-fa-val">5</span>
+          <input type="range" id="p-fa-slider" min="1" max="200" value="5" oninput="updateSetting('MIN_FACE_AREA',this,'p-fa-val')">
+        </div>
+        <div class="setting-row">
+          <span class="setting-name">Mouse Sensitivity</span>
+          <span class="setting-value" id="p-ms-val">2.0</span>
+          <input type="range" id="p-ms-slider" min="0.5" max="10" step="0.5" value="2.0" oninput="updateSensitivity(this,'p-ms-val')">
+        </div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-label">Render Mode</div>
+        <div class="toggle-row" style="margin-bottom:16px;">
+          <div class="mode-group" id="p-mode-group">
+            <button class="mode-btn active" data-mode="raster" onclick="setRenderMode('raster',this,true)">Rasterize</button>
+            <button class="mode-btn" data-mode="raytrace" onclick="setRenderMode('raytrace',this,true)">Raytrace <span class="warn-tag">SLOW</span></button>
+            <button class="mode-btn" data-mode="raymarch" onclick="setRenderMode('raymarch',this,true)">Raymarch <span class="warn-tag">SLOW</span></button>
+          </div>
+        </div>
+        <div class="setting-row" id="p-ray-steps-row" style="display:none;">
+          <span class="setting-name">Ray Steps</span>
+          <span class="setting-value" id="p-rs-val">64</span>
+          <input type="range" id="p-rs-slider" min="16" max="256" step="16" value="64" oninput="updateRaySteps(this,'p-rs-val')">
+        </div>
+        <div class="setting-row" id="p-ray-res-row" style="display:none;">
+          <span class="setting-name">Ray Resolution</span>
+          <span class="setting-value" id="p-rr-val">4</span>
+          <input type="range" id="p-rr-slider" min="1" max="8" step="1" value="4" oninput="updateRayRes(this,'p-rr-val')">
+        </div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-label">Visual</div>
+        <div class="toggle-row">
+          <span class="toggle-name">Face Shading</span>
+          <span class="toggle-badge on" id="p-tog-shade" onclick="toggleSetting('shade',this)">ON</span>
+        </div>
+        <div class="toggle-row">
+          <span class="toggle-name">Grid</span>
+          <span class="toggle-badge on" id="p-tog-grid" onclick="toggleSetting('grid',this)">ON</span>
+        </div>
+        <div class="toggle-row">
+          <span class="toggle-name">Fog</span>
+          <span class="toggle-badge" id="p-tog-fog" onclick="toggleSetting('fog',this)">OFF</span>
+        </div>
+      </div>
+    </div>
+    <button class="menu-btn" onclick="resumeGame()">Resume</button>
+    <button class="menu-btn danger" onclick="quitToMenu()">Quit to Menu</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ===== CONFIG =====
+const CONFIG = {
+  RENDER_DISTANCE: 20,
+  CHUNK_SIZE: 6,
+  MIN_FACE_AREA: 5,
+  MAX_FACES_PER_FRAME: 400,
+  GRID_DRAW_INTERVAL: 5,
+  GRID_RADIUS: 10
+};
+
+let SETTINGS = {
+  shade: true,
+  grid: true,
+  fog: false,
+  renderMode: 'raster', // 'raster' | 'raytrace' | 'raymarch'
+  raySteps: 64,
+  rayResolution: 4,
+  sensitivity: 0.002
+};
+
+// ===== GAME STATE =====
+let gameRunning = false;
+let paused = false;
+
+// ===== CANVAS =====
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d', { alpha:false, desynchronized:true });
+
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// ===== CAMERA =====
+const camera = { x:0,y:0,z:-5, rotX:0,rotY:0, speed:0.2, sinY:0,cosY:1,sinX:0,cosX:1 };
+
+// ===== MOUSE =====
+let mouseLocked = false;
+
+canvas.addEventListener('click', () => {
+  if (!gameRunning || paused) return;
+  if (!mouseLocked) canvas.requestPointerLock();
+  else document.exitPointerLock();
+});
+
+document.addEventListener('pointerlockchange', () => {
+  mouseLocked = document.pointerLockElement === canvas;
+  document.getElementById('crosshair').style.display = mouseLocked ? 'block' : 'none';
+  document.getElementById('lock-prompt').style.display = (!mouseLocked && gameRunning && !paused) ? 'block' : 'none';
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  if (!mouseLocked || paused) return;
+  camera.rotY -= e.movementX * SETTINGS.sensitivity;
+  camera.rotX += e.movementY * SETTINGS.sensitivity;
+  camera.rotX = Math.max(-1.5, Math.min(1.5, camera.rotX));
+});
+
+// ===== KEYBOARD =====
+const keys = new Set();
+window.addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  keys.add(k);
+  if (e.key === ' ') e.preventDefault();
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    if (gameRunning) paused ? resumeGame() : pauseGame();
+  }
+});
+window.addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
+
+// ===== MATH =====
+function updateCameraCache() {
+  camera.sinY = Math.sin(camera.rotY);
+  camera.cosY = Math.cos(camera.rotY);
+  camera.sinX = Math.sin(camera.rotX);
+  camera.cosX = Math.cos(camera.rotX);
+}
+
+function transformPoint(x, y, z) {
+  const dx = x - camera.x, dy = -(y - camera.y), dz = z - camera.z;
+  const tx = dx * camera.cosY + dz * camera.sinY;
+  let tz = -dx * camera.sinY + dz * camera.cosY;
+  const ty = dy * camera.cosX - tz * camera.sinX;
+  tz = dy * camera.sinX + tz * camera.cosX;
+  return [tx, ty, tz];
+}
+
+function projectPoint(tx, ty, tz) {
+  if (tz <= 0.1) return null;
+  const scale = 400 / tz;
+  return [canvas.width/2 + tx*scale, canvas.height/2 + ty*scale, tz];
+}
+
+function sphereInFrustum(x, y, z, radius) {
+  const [tx,ty,tz] = transformPoint(x,y,z);
+  if (tz < 0.1-radius || tz > CONFIG.RENDER_DISTANCE+radius) return false;
+  return Math.abs(tx) <= tz*0.9+radius && Math.abs(ty) <= tz*0.9+radius;
+}
+
+// ===== CHUNKS =====
+const chunks = new Map();
+function getChunkKey(x,z) { return `${Math.floor(x/CONFIG.CHUNK_SIZE)},${Math.floor(z/CONFIG.CHUNK_SIZE)}`; }
+function addToChunk(obj) {
+  const k = getChunkKey(obj.x,obj.z);
+  if (!chunks.has(k)) chunks.set(k,[]);
+  chunks.get(k).push(obj);
+}
+function getVisibleChunks() {
+  const vis=[], cx=Math.floor(camera.x/CONFIG.CHUNK_SIZE), cz=Math.floor(camera.z/CONFIG.CHUNK_SIZE);
+  const r = Math.ceil(CONFIG.RENDER_DISTANCE/CONFIG.CHUNK_SIZE);
+  for (let dx=-r;dx<=r;dx++) for (let dz=-r;dz<=r;dz++) {
+    const c = chunks.get(`${cx+dx},${cz+dz}`);
+    if (c) vis.push(c);
+  }
+  return vis;
+}
+
+// ===== GEOMETRY =====
+const CUBE_VERTS = [
+  [-0.5,-0.5,0.5],[0.5,-0.5,0.5],[0.5,0.5,0.5],[-0.5,0.5,0.5],
+  [-0.5,-0.5,-0.5],[0.5,-0.5,-0.5],[0.5,0.5,-0.5],[-0.5,0.5,-0.5]
+];
+const CUBE_FACES = [
+  {i:[0,1,2,3],n:[0,0,1],shade:1.0},
+  {i:[5,4,7,6],n:[0,0,-1],shade:0.85},
+  {i:[4,0,3,7],n:[-1,0,0],shade:0.7},
+  {i:[1,5,6,2],n:[1,0,0],shade:0.7},
+  {i:[3,2,6,7],n:[0,1,0],shade:0.55},
+  {i:[4,5,1,0],n:[0,-1,0],shade:0.4}
+];
+const COLORS = ['red','blue','green','yellow','purple','orange'];
+
+// color shading cache
+const colorCache = {};
+function shadeColor(hex, factor) {
+  const k = hex+'|'+factor;
+  if (colorCache[k]) return colorCache[k];
+  const tmp = document.createElement('canvas');
+  tmp.width = tmp.height = 1;
+  const c = tmp.getContext('2d');
+  c.fillStyle = hex; c.fillRect(0,0,1,1);
+  const [r,g,b] = c.getImageData(0,0,1,1).data;
+  return colorCache[k] = `rgb(${Math.round(r*factor)},${Math.round(g*factor)},${Math.round(b*factor)})`;
+}
+
+// ===== WORLD =====
+const cubes = [];
+function initWorld() {
+  cubes.length = 0; chunks.clear();
+  const colors = COLORS;
+  for (let x=-8;x<=8;x+=2) for (let z=-8;z<=8;z+=2) {
+    if (Math.random()>0.7) {
+      const cube = {
+        x, y:Math.random()*2-1, z,
+        size:1, color:colors[Math.floor(Math.random()*colors.length)],
+        radius:0.87, worldVerts:null, shadedColors:null
+      };
+      precomputeCubeVerts(cube);
+      cubes.push(cube);
+      addToChunk(cube);
+    }
+  }
+}
+
+function precomputeCubeVerts(cube) {
+  const s = cube.size;
+  cube.worldVerts = CUBE_VERTS.map(([vx,vy,vz])=>[cube.x+vx*s, cube.y+vy*s, cube.z+vz*s]);
+  cube.shadedColors = CUBE_FACES.map(f => shadeColor(cube.color, f.shade));
+}
+
+// ===== GRID =====
+const gridLines = [];
+function initGrid() {
+  gridLines.length = 0;
+  for (let i=-10;i<=10;i++) {
+    gridLines.push({x1:i*2,y:-1,z1:-20,x2:i*2,z2:20});
+    gridLines.push({x1:-20,y:-1,z1:i*2,x2:20,z2:i*2});
+  }
+}
+
+function drawGrid() {
+  ctx.strokeStyle='rgba(0,255,204,0.1)'; ctx.lineWidth=1;
+  for (let i=0;i<gridLines.length;i+=CONFIG.GRID_DRAW_INTERVAL) {
+    const g=gridLines[i];
+    if (Math.abs(g.x1-camera.x)>CONFIG.GRID_RADIUS && Math.abs(g.z1-camera.z)>CONFIG.GRID_RADIUS) continue;
+    const t1=transformPoint(g.x1,g.y,g.z1), t2=transformPoint(g.x2,g.y,g.z2);
+    if (t1[2]>0.1&&t2[2]>0.1&&t1[2]<CONFIG.RENDER_DISTANCE&&t2[2]<CONFIG.RENDER_DISTANCE) {
+      const p1=projectPoint(t1[0],t1[1],t1[2]), p2=projectPoint(t2[0],t2[1],t2[2]);
+      if (p1&&p2) { ctx.beginPath();ctx.moveTo(p1[0],p1[1]);ctx.lineTo(p2[0],p2[1]);ctx.stroke(); }
+    }
+  }
+}
+
+// ===== RASTER RENDER =====
+const renderQueue = [];
+const stats = {visible:0, drawn:0, culled:0};
+
+function queueCubeFaces(cube) {
+  const {x:cx,y:cy,z:cz}=cube;
+  const dx=cx-camera.x,dy=cy-camera.y,dz=cz-camera.z;
+  if (dx*dx+dy*dy+dz*dz > CONFIG.RENDER_DISTANCE*CONFIG.RENDER_DISTANCE) { stats.culled++;return; }
+  if (!sphereInFrustum(cx,cy,cz,cube.radius)) { stats.culled++;return; }
+  stats.visible++;
+  const tv=cube.worldVerts.map(([wx,wy,wz])=>transformPoint(wx,wy,wz));
+  for (let f=0;f<6;f++) {
+    const face=CUBE_FACES[f];
+    const dot=face.n[0]*(camera.x-cx)+face.n[1]*(camera.y-cy)+face.n[2]*(camera.z-cz);
+    if (dot<=0) continue;
+    const avgZ=(tv[face.i[0]][2]+tv[face.i[1]][2]+tv[face.i[2]][2]+tv[face.i[3]][2])/4;
+    if (avgZ<=0.1) continue;
+    const proj=[]; let ok=true;
+    for (let i=0;i<4;i++) {
+      const p=projectPoint(tv[face.i[i]][0],tv[face.i[i]][1],tv[face.i[i]][2]);
+      if (!p){ok=false;break;} proj.push(p);
+    }
+    if (!ok) continue;
+    const area=Math.abs((proj[1][0]-proj[0][0])*(proj[2][1]-proj[0][1])-(proj[2][0]-proj[0][0])*(proj[1][1]-proj[0][1]));
+    if (area<CONFIG.MIN_FACE_AREA) continue;
+    if (renderQueue.length>=CONFIG.MAX_FACES_PER_FRAME) return;
+    const color = SETTINGS.shade ? cube.shadedColors[f] : cube.color;
+    renderQueue.push({p:proj, c:color, z:avgZ, dist: dx*dx+dy*dy+dz*dz});
+  }
+}
+
+function rasterRender() {
+  renderQueue.length=0; stats.visible=0; stats.drawn=0; stats.culled=0;
+  for (const chunk of getVisibleChunks()) {
+    for (const cube of chunk) {
+      queueCubeFaces(cube);
+      if (renderQueue.length>=CONFIG.MAX_FACES_PER_FRAME) break;
+    }
+    if (renderQueue.length>=CONFIG.MAX_FACES_PER_FRAME) break;
+  }
+  renderQueue.sort((a,b)=>b.z-a.z);
+  for (const f of renderQueue) {
+    let color = f.c;
+    if (SETTINGS.fog) {
+      const fogAmt = Math.min(1, f.z / CONFIG.RENDER_DISTANCE);
+      ctx.globalAlpha = 1-fogAmt*0.8;
+    }
+    ctx.fillStyle=color;
+    ctx.beginPath();
+    ctx.moveTo(f.p[0][0],f.p[0][1]);
+    ctx.lineTo(f.p[1][0],f.p[1][1]);
+    ctx.lineTo(f.p[2][0],f.p[2][1]);
+    ctx.lineTo(f.p[3][0],f.p[3][1]);
+    ctx.closePath(); ctx.fill();
+    ctx.globalAlpha=1;
+    stats.drawn++;
+  }
+}
+
+// ===== RAYTRACING =====
+// Slab method AABB ray-box intersection
+function rayAABB(ro, rd, cube) {
+  const s = cube.size*0.5;
+  const mn = [cube.x-s, cube.y-s, cube.z-s];
+  const mx = [cube.x+s, cube.y+s, cube.z+s];
+  let tmin=-Infinity, tmax=Infinity;
+  for (let i=0;i<3;i++) {
+    if (Math.abs(rd[i])<1e-8) {
+      if (ro[i]<mn[i]||ro[i]>mx[i]) return null;
+    } else {
+      let t1=(mn[i]-ro[i])/rd[i], t2=(mx[i]-ro[i])/rd[i];
+      if (t1>t2){const tmp=t1;t1=t2;t2=tmp;}
+      tmin=Math.max(tmin,t1); tmax=Math.min(tmax,t2);
+      if (tmin>tmax) return null;
+    }
+  }
+  if (tmax<0.01) return null;
+  const t=tmin<0.01?tmax:tmin;
+  const hit=[ro[0]+rd[0]*t, ro[1]+rd[1]*t, ro[2]+rd[2]*t];
+  // compute face normal
+  const s2=cube.size*0.5+0.001;
+  const n=[0,0,0];
+  for (let i=0;i<3;i++) {
+    const c=[cube.x,cube.y,cube.z][i];
+    if (Math.abs(hit[i]-(c+s2*0.99))<0.05) n[i]=1;
+    else if (Math.abs(hit[i]-(c-s2*0.99))<0.05) n[i]=-1;
+  }
+  return {t, hit, n, cube};
+}
+
+function normalize(v) {
+  const l=Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);
+  return l>0?[v[0]/l,v[1]/l,v[2]/l]:[0,0,1];
+}
+
+function raytraceRender() {
+  const res = SETTINGS.rayResolution;
+  const W=Math.floor(canvas.width/res), H=Math.floor(canvas.height/res);
+  const aspect=W/H;
+  const fov=0.7;
+
+  // light direction (fixed sun)
+  const LD=normalize([0.5,-1,0.3]);
+
+  const imgData=ctx.createImageData(W,H);
+  const data=imgData.data;
+
+  // sky color
+  const skyR=135,skyG=206,skyB=235;
+
+  const ro=[camera.x,camera.y,camera.z];
+
+  // get all cubes in range for BVH-lite
+  const nearbyCubes=[];
+  for (const chunk of getVisibleChunks()) for (const c of chunk) {
+    const dx=c.x-camera.x,dy=c.y-camera.y,dz=c.z-camera.z;
+    if (dx*dx+dy*dy+dz*dz<CONFIG.RENDER_DISTANCE*CONFIG.RENDER_DISTANCE) nearbyCubes.push(c);
+  }
+
+  stats.visible=nearbyCubes.length; stats.drawn=0; stats.culled=0;
+
+  for (let py=0;py<H;py++) {
+    for (let px=0;px<W;px++) {
+      // ray direction in camera space
+      const ndcX=(px/W)*2-1, ndcY=1-(py/H)*2;
+      const rdCam=[ndcX*aspect*fov, ndcY*fov, 1];
+
+      // rotate by camera
+      const sinY=camera.sinY,cosY=camera.cosY,sinX=camera.sinX,cosX=camera.cosX;
+      let rx=rdCam[0]*cosY - rdCam[2]*sinY; // wrong sign fix
+      let rz=rdCam[0]*sinY + rdCam[2]*cosY;
+      let ry=rdCam[1]*cosX - rz*sinX;
+      rz=rdCam[1]*sinX + rz*cosX;
+      // flip Y for our coord system
+      ry=-ry;
+      const rd=normalize([rx,ry,rz]);
+
+      // find closest hit
+      let closest=null;
+      for (const cube of nearbyCubes) {
+        const hit=rayAABB(ro,rd,cube);
+        if (hit && (!closest||hit.t<closest.t)) closest=hit;
+      }
+
+      const idx=(py*W+px)*4;
+      if (closest) {
+        // diffuse lighting
+        const n=closest.n;
+        const diff=Math.max(0, -(n[0]*LD[0]+n[1]*LD[1]+n[2]*LD[2]));
+        const light=0.2+0.8*diff;
+        // parse color
+        const tmp=document.createElement('canvas'); tmp.width=tmp.height=1;
+        const tc=tmp.getContext('2d'); tc.fillStyle=closest.cube.color; tc.fillRect(0,0,1,1);
+        const [cr,cg,cb]=tc.getImageData(0,0,1,1).data;
+        // fog
+        const fog=SETTINGS.fog?Math.min(1,closest.t/CONFIG.RENDER_DISTANCE):0;
+        data[idx]  =Math.round((cr*light)*(1-fog)+skyR*fog);
+        data[idx+1]=Math.round((cg*light)*(1-fog)+skyG*fog);
+        data[idx+2]=Math.round((cb*light)*(1-fog)+skyB*fog);
+        data[idx+3]=255;
+        stats.drawn++;
+      } else {
+        data[idx]=skyR; data[idx+1]=skyG; data[idx+2]=skyB; data[idx+3]=255;
+      }
+    }
+  }
+
+  // upscale
+  const tmp2=document.createElement('canvas'); tmp2.width=W; tmp2.height=H;
+  tmp2.getContext('2d').putImageData(imgData,0,0);
+  ctx.imageSmoothingEnabled=false;
+  ctx.drawImage(tmp2,0,0,canvas.width,canvas.height);
+}
+
+// ===== RAYMARCHING =====
+// SDF for a box
+function sdfBox(px,py,pz, cx,cy,cz, s) {
+  const qx=Math.abs(px-cx)-s, qy=Math.abs(py-cy)-s, qz=Math.abs(pz-cz)-s;
+  const mx=Math.max(qx,0), my=Math.max(qy,0), mz=Math.max(qz,0);
+  return Math.sqrt(mx*mx+my*my+mz*mz) + Math.min(Math.max(qx,qy,qz),0);
+}
+
+function sceneSDF(px,py,pz,nearbyCubes) {
+  let d=Infinity, hitCube=null;
+  for (const c of nearbyCubes) {
+    const cd=sdfBox(px,py,pz, c.x,c.y,c.z, c.size*0.5);
+    if (cd<d){d=cd; hitCube=c;}
+  }
+  return {d,cube:hitCube};
+}
+
+function sceneSDFNormal(px,py,pz,nearbyCubes) {
+  const e=0.01;
+  const dx=sceneSDF(px+e,py,pz,nearbyCubes).d-sceneSDF(px-e,py,pz,nearbyCubes).d;
+  const dy=sceneSDF(px,py+e,pz,nearbyCubes).d-sceneSDF(px,py-e,pz,nearbyCubes).d;
+  const dz=sceneSDF(px,py,pz+e,nearbyCubes).d-sceneSDF(px,py,pz-e,nearbyCubes).d;
+  return normalize([dx,dy,dz]);
+}
+
+function raymarchRender() {
+  const res=SETTINGS.rayResolution;
+  const W=Math.floor(canvas.width/res), H=Math.floor(canvas.height/res);
+  const aspect=W/H, fov=0.7;
+  const MAX_STEPS=SETTINGS.raySteps, MAX_DIST=CONFIG.RENDER_DISTANCE, SURF=0.02;
+  const LD=normalize([0.5,-1,0.3]);
+  const skyR=135,skyG=206,skyB=235;
+  const ro=[camera.x,camera.y,camera.z];
+
+  const nearbyCubes=[];
+  for (const chunk of getVisibleChunks()) for (const c of chunk) {
+    const dx=c.x-camera.x,dy=c.y-camera.y,dz=c.z-camera.z;
+    if (dx*dx+dy*dy+dz*dz<MAX_DIST*MAX_DIST) nearbyCubes.push(c);
+  }
+
+  stats.visible=nearbyCubes.length; stats.drawn=0; stats.culled=0;
+
+  const imgData=ctx.createImageData(W,H);
+  const data=imgData.data;
+
+  for (let py=0;py<H;py++) {
+    for (let px=0;px<W;px++) {
+      const ndcX=(px/W)*2-1, ndcY=1-(py/H)*2;
+      const rdCam=[ndcX*aspect*fov, ndcY*fov, 1];
+      const sinY=camera.sinY,cosY=camera.cosY,sinX=camera.sinX,cosX=camera.cosX;
+      let rx=rdCam[0]*cosY-rdCam[2]*sinY;
+      let rz=rdCam[0]*sinY+rdCam[2]*cosY;
+      let ry=rdCam[1]*cosX-rz*sinX;
+      rz=rdCam[1]*sinX+rz*cosX;
+      ry=-ry;
+      const rd=normalize([rx,ry,rz]);
+
+      let t=0, hitCube=null, steps=0;
+      for (;steps<MAX_STEPS;steps++) {
+        const p=[ro[0]+rd[0]*t, ro[1]+rd[1]*t, ro[2]+rd[2]*t];
+        const {d,cube}=sceneSDF(p[0],p[1],p[2],nearbyCubes);
+        if (d<SURF){hitCube=cube; break;}
+        t+=d;
+        if (t>MAX_DIST) break;
+      }
+
+      const idx=(py*W+px)*4;
+      if (hitCube) {
+        const hp=[ro[0]+rd[0]*t,ro[1]+rd[1]*t,ro[2]+rd[2]*t];
+        const n=sceneSDFNormal(hp[0],hp[1],hp[2],nearbyCubes);
+        const diff=Math.max(0,-(n[0]*LD[0]+n[1]*LD[1]+n[2]*LD[2]));
+        const ao=1-steps/MAX_STEPS; // ambient occlusion approx
+        const light=(0.2+0.8*diff)*ao;
+        const tmp=document.createElement('canvas'); tmp.width=tmp.height=1;
+        const tc=tmp.getContext('2d'); tc.fillStyle=hitCube.color; tc.fillRect(0,0,1,1);
+        const [cr,cg,cb]=tc.getImageData(0,0,1,1).data;
+        const fog=SETTINGS.fog?Math.min(1,t/MAX_DIST):0;
+        data[idx]  =Math.round((cr*light)*(1-fog)+skyR*fog);
+        data[idx+1]=Math.round((cg*light)*(1-fog)+skyG*fog);
+        data[idx+2]=Math.round((cb*light)*(1-fog)+skyB*fog);
+        data[idx+3]=255;
+        stats.drawn++;
+      } else {
+        // gradient sky
+        const skyFac=Math.max(0,Math.min(1,(ndcY+1)/2));
+        data[idx]=Math.round(skyR*skyFac+20*(1-skyFac));
+        data[idx+1]=Math.round(skyG*skyFac+20*(1-skyFac));
+        data[idx+2]=Math.round(skyB*skyFac+80*(1-skyFac));
+        data[idx+3]=255;
+      }
+    }
+  }
+
+  const tmp2=document.createElement('canvas'); tmp2.width=W; tmp2.height=H;
+  tmp2.getContext('2d').putImageData(imgData,0,0);
+  ctx.imageSmoothingEnabled=false;
+  ctx.drawImage(tmp2,0,0,canvas.width,canvas.height);
+}
+
+// ===== MOVEMENT =====
+function handleMovement() {
+  let mx=0,mz=0;
+  if (keys.has('w')) mz+=1;
+  if (keys.has('s')) mz-=1;
+  if (keys.has('a')) mx-=1;
+  if (keys.has('d')) mx+=1;
+  camera.x+=(mx*camera.cosY-mz*camera.sinY)*camera.speed;
+  camera.z+=(mx*camera.sinY+mz*camera.cosY)*camera.speed;
+  if (keys.has(' '))      camera.y+=camera.speed;
+  if (keys.has('shift'))  camera.y-=camera.speed;
+}
+
+// ===== MAIN LOOP =====
+let frameCount=0, lastTime=performance.now(), fps=0;
+
+function draw(now) {
+  if (!gameRunning || paused) { requestAnimationFrame(draw); return; }
+
+  updateCameraCache();
+  handleMovement();
+
+  // background
+  if (SETTINGS.renderMode==='raster') {
+    ctx.fillStyle='#87CEEB'; ctx.fillRect(0,0,canvas.width,canvas.height);
+    if (SETTINGS.grid) drawGrid();
+    rasterRender();
+  } else if (SETTINGS.renderMode==='raytrace') {
+    raytraceRender();
+    if (SETTINGS.grid) drawGrid();
+  } else {
+    raymarchRender();
+    if (SETTINGS.grid) drawGrid();
+  }
+
+  frameCount++;
+  if (now-lastTime>=1000) {
+    fps=frameCount; frameCount=0; lastTime=now;
+    document.getElementById('fps').textContent=fps;
+    document.getElementById('faces').textContent=stats.drawn;
+    document.getElementById('visible').textContent=stats.visible;
+    document.getElementById('rdist-hud').textContent=CONFIG.RENDER_DISTANCE;
+    document.getElementById('px').textContent=camera.x.toFixed(1);
+    document.getElementById('py').textContent=camera.y.toFixed(1);
+    document.getElementById('pz').textContent=camera.z.toFixed(1);
+  }
+
+  requestAnimationFrame(draw);
+}
+
+// ===== MENU LOGIC =====
+function showScreen(id) {
+  document.querySelectorAll('#menu-layer > div').forEach(d=>d.style.display='none');
+  document.getElementById(id).style.display='block';
+}
+
+function startGame() {
+  document.getElementById('menu-layer').style.display='none';
+  document.getElementById('hud').style.display='block';
+  document.getElementById('render-mode-hud').style.display='block';
+  document.getElementById('lock-prompt').style.display='block';
+  document.getElementById('pause-hint').style.display='block';
+  initWorld(); initGrid();
+  gameRunning=true; paused=false;
+  requestAnimationFrame(draw);
+}
+
+function pauseGame() {
+  paused=true;
+  document.getElementById('pause-layer').style.display='flex';
+  document.getElementById('lock-prompt').style.display='none';
+  document.getElementById('crosshair').style.display='none';
+  if (document.pointerLockElement===canvas) document.exitPointerLock();
+  // sync pause sliders to current values
+  syncPauseSliders();
+}
+
+function resumeGame() {
+  paused=false;
+  document.getElementById('pause-layer').style.display='none';
+  document.getElementById('lock-prompt').style.display='block';
+}
+
+function quitToMenu() {
+  gameRunning=false; paused=false;
+  document.getElementById('pause-layer').style.display='none';
+  document.getElementById('menu-layer').style.display='flex';
+  document.getElementById('hud').style.display='none';
+  document.getElementById('render-mode-hud').style.display='none';
+  document.getElementById('lock-prompt').style.display='none';
+  document.getElementById('pause-hint').style.display='none';
+  showScreen('screen-main');
+}
+
+function syncPauseSliders() {
+  document.getElementById('p-rd-slider').value=CONFIG.RENDER_DISTANCE;
+  document.getElementById('p-rd-val').textContent=CONFIG.RENDER_DISTANCE;
+  document.getElementById('p-mf-slider').value=CONFIG.MAX_FACES_PER_FRAME;
+  document.getElementById('p-mf-val').textContent=CONFIG.MAX_FACES_PER_FRAME;
+  document.getElementById('p-fa-slider').value=CONFIG.MIN_FACE_AREA;
+  document.getElementById('p-fa-val').textContent=CONFIG.MIN_FACE_AREA;
+  document.getElementById('p-ms-slider').value=SETTINGS.sensitivity*1000;
+  document.getElementById('p-ms-val').textContent=(SETTINGS.sensitivity*1000).toFixed(1);
+  // sync mode buttons
+  syncModeButtons('p-mode-group', SETTINGS.renderMode);
+  // sync toggles
+  syncToggle('p-tog-shade', SETTINGS.shade);
+  syncToggle('p-tog-grid', SETTINGS.grid);
+  syncToggle('p-tog-fog', SETTINGS.fog);
+}
+
+function syncToggle(id, val) {
+  const el=document.getElementById(id);
+  el.textContent=val?'ON':'OFF';
+  el.className='toggle-badge'+(val?' on':'');
+}
+
+function syncModeButtons(groupId, mode) {
+  document.querySelectorAll(`#${groupId} .mode-btn`).forEach(b=>{
+    b.classList.toggle('active', b.dataset.mode===mode);
+  });
+  const isRay=mode!=='raster';
+  const prefix=groupId.startsWith('p-')?'p-':'';
+  document.getElementById(prefix+'ray-steps-row').style.display=isRay?'flex':'none';
+  document.getElementById(prefix+'ray-res-row').style.display=isRay?'flex':'none';
+}
+
+function updateSetting(key, slider, valId) {
+  const v=parseInt(slider.value);
+  CONFIG[key]=v;
+  const displayId=valId||slider.id.replace('-slider','-val');
+  document.getElementById(displayId).textContent=v;
+  // update track fill
+  const pct=((v-slider.min)/(slider.max-slider.min)*100).toFixed(1);
+  slider.style.setProperty('--pct',pct+'%');
+}
+
+function updateSensitivity(slider, valId) {
+  const v=parseFloat(slider.value);
+  SETTINGS.sensitivity=v/1000;
+  const displayId=valId||slider.id.replace('-slider','-val');
+  document.getElementById(displayId).textContent=v.toFixed(1);
+  const pct=((v-slider.min)/(slider.max-slider.min)*100).toFixed(1);
+  slider.style.setProperty('--pct',pct+'%');
+}
+
+function updateRaySteps(slider, valId) {
+  SETTINGS.raySteps=parseInt(slider.value);
+  const displayId=valId||slider.id.replace('-slider','-val');
+  document.getElementById(displayId).textContent=SETTINGS.raySteps;
+}
+
+function updateRayRes(slider, valId) {
+  SETTINGS.rayResolution=parseInt(slider.value);
+  const displayId=valId||slider.id.replace('-slider','-val');
+  document.getElementById(displayId).textContent=SETTINGS.rayResolution;
+}
+
+function setRenderMode(mode, btn, isPause) {
+  SETTINGS.renderMode=mode;
+  document.getElementById('render-mode-hud').textContent=mode.toUpperCase();
+  // update both groups
+  syncModeButtons('mode-group', mode);
+  syncModeButtons('p-mode-group', mode);
+}
+
+function toggleSetting(key, badge) {
+  SETTINGS[key]=!SETTINGS[key];
+  const val=SETTINGS[key];
+  // update all badges for this key
+  document.querySelectorAll(`[id$="tog-${key}"]`).forEach(el=>{
+    el.textContent=val?'ON':'OFF';
+    el.className='toggle-badge'+(val?' on':'');
+  });
+}
+
+// init sliders track fill on load
+document.querySelectorAll('input[type=range]').forEach(s=>{
+  const pct=((s.value-s.min)/(s.max-s.min)*100).toFixed(1);
+  s.style.setProperty('--pct',pct+'%');
+  s.addEventListener('input',()=>{
+    const p=((s.value-s.min)/(s.max-s.min)*100).toFixed(1);
+    s.style.setProperty('--pct',p+'%');
+  });
+});
+</script>
 </body>
 </html>
